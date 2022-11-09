@@ -1,0 +1,238 @@
+---
+title: "Ferragut002 - seleccion genes 01"
+author: "Sergio Martí"
+date: "7/11/2022"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Selección de Genes
+
+¿A que concentraciones son resistentes las lineas celulares de Miguel? ¿A que son resistentes?
+
+Seleccionar todos los genes que disminuyan o incrementen su expresión en todas las líneas. A estos genes hay que pasarlos por cytoscape para analizar núcleos funcionales.
+
+## Filtrar registros que incrementan o disminuyen
+
+Para seleccionar los genes que incrementan o disminuyen su expresión, se ha construido un dataframe a partir de los excel con los datos de comparaciones. Se han utilizado los excel que comparan las muestras resistentes contra la muestra **wild-type** u original. De esta forma, se tiene en un mismo dataframe los datos de expresión y comparación de las muestras resistentes al tratamiento.
+
+### Cargar los datos en R
+
+Leer los datos del dataset.
+
+```{r Cargar los datos del dataframe grande}
+# Libreria para importar xlsx
+library("readxl")
+
+# Leer el dataset
+
+# Servidor
+# df <- read_excel("C:/Users/clara/Ferragout/Ferragout 2/Informe/Anexo3/breast vs breast/dataset.xlsx")
+
+# Local
+# dfComp <- read_excel("C:/Sergio/Curso 2022-23/Proyecto FISABIO/Ferragout/Ferragout 2/Informe/Anexo3/breast vs breast/dataset.xlsx")
+dfComp <- read_excel("C:/Sergio/Curso 2022-23/Proyecto FISABIO/Ferragout/Ferragout 2/Informe/Anexo3/LEU vs LEU/dataset_merge_rename.xlsx")
+```
+
+### Tipificar variables
+
+Los valores de señal de las sondas varían mucho, exisitiendo muchos outliders. Para evitar esto, los datos se van a tipificar, para trabajar con desviaciones de la media.
+
+```{r tipificar variables, echo = FALSE, results = hide}
+# Aplico la función "scale" a todas las columnas que contengan "_Signal" (los datos de señal).
+lapply(grep("_Signal", colnames(dfComp)), function(iSignalCol) {
+  dfComp[, iSignalCol] <- scale(dfComp[, iSignalCol], center = TRUE, scale = TRUE)
+})
+```
+
+### Selección de las sondas
+
+Se va a construir una función para automatizar el proceso de selección. La función seleccionará las filas que cumplan los requisitos, generando un nuevo dataframe. Es necesario índicar, por parámetro, las columnas sobre las que se quiere aplicar el filtro (en este caso, las columnas acabadas en "_Change") y que niveles se quieren seleccionar. Por ejemplo: si se buscan las sondas cuyos valores de señal aumentan, se deberá de pasar por parámetro una lista con "I" y "MI".
+
+```{r Definición de la función de selección}
+# Función selección sondas
+SelectProbes <- function(df, lChangeCols, lChangeWanted) {
+  
+  dfTemp <- df
+
+  for (col in lChangeCols) {
+    
+    lBoolSel <- rep(FALSE, nrow(dfTemp))
+    
+    for (changeWanted in lChangeWanted) {
+      lBoolSel <- lBoolSel | dfTemp[, col] == changeWanted
+    }
+    
+    dfTemp <- dfTemp[lBoolSel, ]
+
+  }
+  
+  return(dfTemp)
+}
+```
+
+#### Seleccion de las sondas que incrementan
+
+Seleccionamos los datos de señal que aumentan en de forma creciente. 
+
+```{r Selección de sondas 01}
+# Selecciono las sondas que incrementan o marginalmente incrementan en todas las muestras
+dfIncTemp <- SelectProbes(dfComp, grep("_Change$", colnames(dfComp)), c("I", "MI"))
+
+# Selecciono solamente las columnas con los datos de señal "_Signal"
+dfInc01 <- dfIncTemp[, grep("_Signal", colnames(dfIncTemp))]
+
+# Añado al dataframe la variable "Probe Set ID"
+dfInc01$`Probe Set ID` <- dfIncTemp$`Probe Set ID`
+
+# borro las variables que no son necesarias
+rm(dfIncTemp)
+
+# Muestro los datos
+dfInc01
+```
+
+También se puede aplicar un filtro más laxo, teniendo en cuenta las sondas que incrementan pero a cotinuación no sufren cambios.
+
+```{r Selección de sondas 02}
+# Selecciono las sondas que incrementan de la 1r a la 2n muestra
+# Utilizo el mismo algoritmo que la función SelectProbes
+lBoolSel <- rep(FALSE, nrow(dfComp))
+
+lSelectedColumns <- colnames(dfComp)[grep("_Change$", colnames(dfComp))]
+lSelectedColumns <- lSelectedColumns[grep("2", lSelectedColumns)]
+
+for (changeWanted in c("I", "MI")) {
+  lBoolSel <- lBoolSel | dfComp[, lSelectedColumns] == changeWanted
+}
+
+dfIncTemp <- dfComp[lBoolSel, ]
+
+rm(lBoolSel)
+
+# Selecciono las sondas que incrementan en el resto de columnas "_Change"
+lSelectedColumns <- colnames(dfComp)[grep("_Change$", colnames(dfComp))]
+lSelectedColumns <- lSelectedColumns[grep("[3-99]", lSelectedColumns)]
+
+dfIncTemp <- SelectProbes(dfIncTemp, lSelectedColumns, c("I", "MI", "NC"))
+
+# Selecciono solamente las columnas con los datos de señal "_Signal"
+dfInc02 <- dfIncTemp[, grep("_Signal", colnames(dfIncTemp))]
+
+# Añado al dataframe la variable "Probe Set ID"
+dfInc02$`Probe Set ID` <- dfIncTemp$`Probe Set ID`
+
+# borro las variables que no son necesarias
+rm(dfIncTemp, changeWanted, lSelectedColumns)
+
+# Muestro los datos
+dfInc02
+```
+
+#### Selección de las sondas que disminuyen
+
+También se han seleccionado las sondas que disminuyen, de ambas formas.
+
+```{r Selección de las sondas 03}
+# Selecciono las sondas que incrementan o marginalmente incrementan en todas las muestras
+dfDecTemp <- SelectProbes(dfComp, grep("_Change$", colnames(dfComp)), c("D", "MD"))
+
+# Selecciono solamente las columnas con los datos de señal "_Signal"
+dfDec01 <- dfDecTemp[, grep("_Signal", colnames(dfDecTemp))]
+
+# Añado al dataframe la variable "Probe Set ID"
+dfDec01$`Probe Set ID` <- dfDecTemp$`Probe Set ID`
+
+# borro las variables que no son necesarias
+rm(dfDecTemp)
+
+# Muestro los datos
+dfDec01
+```
+
+```{r Selección de las sondas 04}
+# Selecciono las sondas que incrementan de la 1r a la 2n muestra
+# Utilizo el mismo algoritmo que la función SelectProbes
+lBoolSel <- rep(FALSE, nrow(dfComp))
+
+lSelectedColumns <- colnames(dfComp)[grep("_Change$", colnames(dfComp))]
+lSelectedColumns <- lSelectedColumns[grep("2", lSelectedColumns)]
+  
+for (changeWanted in c("D", "MD")) {
+  lBoolSel <- lBoolSel | dfComp[, lSelectedColumns] == changeWanted
+}
+
+dfDecTemp <- dfComp[lBoolSel, ]
+
+rm(lBoolSel)
+
+# Selecciono las sondas que incrementan en el resto de columnas "_Change"
+lSelectedColumns <- colnames(dfComp)[grep("_Change$", colnames(dfComp))]
+lSelectedColumns <- lSelectedColumns[grep("[3-99]", lSelectedColumns)]
+
+dfDecTemp <- SelectProbes(dfDecTemp, lSelectedColumns, c("D", "MD", "NC"))
+
+# Selecciono solamente las columnas con los datos de señal "_Signal"
+dfDec02 <- dfDecTemp[, grep("_Signal", colnames(dfDecTemp))]
+
+# Añado al dataframe la variable "Probe Set ID"
+dfDec02$`Probe Set ID` <- dfDecTemp$`Probe Set ID`
+
+# borro las variables que no son necesarias
+rm(dfDecTemp, changeWanted)
+
+# Muestro los datos
+dfDec02
+```
+
+### Guardar los dataframes
+
+Se va a proceder a guardar los dataframes generados como excel.
+
+A parte, también se quieren generar gráficas. La mejor forma de representar estos datos es mediante un gráfico de líneas en ggplot2. Para ello, es necesario reorganizar el dataset. La mejor opción para ello es utilizar Python. Para transferir el dataset de R a Python, utilizamos la librería "arrow". Esta librería permite transferir datasets entre R y Python, haciendo uso de archivos ".feather", sin que sea un proceso lento y pesado para el ordenador. 
+
+```{r Generar el archivo que indica que dataframes deben de ser reorganizados}
+# Listo los objetos del entorno
+lObjs <- ls()
+
+# Selecciono solamente los nombres de los objetos que contiene "Dec" o "Inc"
+lObjs <- lObjs[grep("(*Dec*|*Inc*)", lObjs)]
+
+# Muestro el nombre de los objetos que se van a guardar como ".feather"
+lObjs
+
+# Cargar la librería para guardar dataframes como excels
+library("writexl")
+
+# Cargar la librería arrow
+library(arrow)
+
+# Guardamos cada uno de los dataframes con la extensión feather
+lFeatherNames <- c()
+for (sObj in lObjs) {
+  # Añado a cada nombre de objeto, la extensión ".feather"
+  sObjName <- paste(c(sObj, "feather"), collapse = ".")
+  
+  # Guardamos el objeto extensión feather
+  feather::write_feather(get(sObj), sObjName)
+  
+  # Guardamos el dataframe como un excel
+  writexl::write_xlsx(get(sObj), paste(c(sObj, "xlsx"), collapse = "."))
+  
+  # Almacenamos en una lista el nombre del archivo ".feather"
+  lFeatherNames <- c(lFeatherNames, sObjName)
+}
+
+# Eliminamos las variables que ya no son necesarias
+rm(lObjs, sObj, sObjName)
+
+# Escribir el archivo de texto
+textFile <- file("in_feather.txt") 
+writeLines(lFeatherNames, textFile)
+close(textFile)
+rm(lFeatherNames, textFile)
+
+```

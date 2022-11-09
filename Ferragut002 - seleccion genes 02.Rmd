@@ -1,0 +1,118 @@
+---
+title: "Ferragut002 - seleccion genes 02"
+author: "Sergio Martí"
+date: "7/11/2022"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Gráficar las sondas seleccionadas
+
+Para poder gráficar como se pretende los datos de las sondas seleccionadas, era necesario reorganizar la información. Esta tarea se ha realizado mediante un script de Python.
+
+## Adquirir los datos
+
+A continuación se va a proceder a leer los dataframes reorganizados.
+
+```{r adquirir los dataframes reorganizados}
+# El nombre de los archivos .feather reorganizados están guardados en un archivo de texto llamado "out_feather"
+
+# Creo una lista para los nombres de los archivos .feather
+lFeatherNames = list()
+
+# Creo el archivo que contiene los nombres de los archivos reordenados 
+con = file("out_feather.txt", "r")
+
+# Leo el archivo
+# ATENCIÓN: esta no es una buena forma para leer archivos muy grandes
+while ( TRUE ) {
+  line = readLines(con, n = 1)
+  if ( length(line) == 0 ) {
+    break
+  }
+  
+  lFeatherNames <- append(lFeatherNames, line)
+  
+}
+
+# Cierro el archivo y borro las variables que no son necesarias
+close(con)
+rm(con, line)
+
+```
+
+## Construir las gráficas
+
+Gráficamos los datasets
+
+```{r graficar datasets}
+# Cargar la librería arrow
+library(arrow)
+
+# Cargar ggplot2
+library(ggplot2)
+
+# Ejectuar para cada archivo feather
+lapply(lFeatherNames, function(sFeatherName) {
+    # Leer el archivo con arrow, feather da problemas
+  dfReorder <- arrow::read_feather(sFeatherName)
+  
+  ggplot(data=dfReorder, aes(x = Case, y = Signal, group = `Probe Set ID`)) + 
+    geom_line() + 
+    geom_point() + 
+    ggtitle(sFeatherName) +
+    theme(
+      text = element_text(size=10),
+      axis.text.x = element_text(angle = 12.5, vjust = 0.5, hjust=0.5)
+      )
+})
+
+```
+
+Mostramos las gráficas de forma conjunta.
+
+```{r Mostrar las gráficas conjuntas}
+# Cargar la librería arrow
+library(arrow)
+
+# Cargar ggplot2
+library(ggplot2)
+
+# Ejectuar para cada archivo feather
+lGgPlots <- lapply(lFeatherNames, function(sFeatherName) {
+    # Leer el archivo con arrow, feather da problemas
+  dfReorder <- arrow::read_feather(sFeatherName)
+  
+  # Construir la gráfica
+  gPlot <- ggplot(data=dfReorder, aes(x = Case, y = Signal, group = `Probe Set ID`)) + 
+    geom_line() + 
+    geom_point() + 
+    ggtitle(sFeatherName) +
+    theme(
+      text = element_text(size=7), 
+      axis.text.x = element_text(angle = 12.5, vjust = 0.5, hjust=0.5)
+      )
+    #theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+  
+  # Mostrar la gráfica
+  gPlot
+  
+  return (gPlot)
+})
+
+# Cargar la librería gridExtra
+library(gridExtra)
+
+# Utilizar la función "grid.arrange" aplicada a la lista de plots. Dos columnas
+do.call("grid.arrange", c(lGgPlots, ncol=2))
+
+```
+
+```{r eliminar variables}
+# Elimino las variables que ya no son necesarias
+rm(lFeatherNames, lGgPlots)
+
+```
