@@ -42,8 +42,13 @@
 
 # --- SCRIPT --- #
 
-# Compruebo que el número de parámetros del script es correcto
+# Compruebo que el número de parámetros del script sea correcto
 if [[ $# == 3 ]]; then
+	# Limpio el archivo .csv con los nombres de los archivos procesados
+	rm -f "$3/salmon_quant_files.csv"
+	# Añado la cabecera del archivo .csv
+	echo "sample,ubi,timestamp" >> "$3/salmon_quant_files.csv"
+
 	# Recorro todos los archivos dentro del directorio pasado por parámetro 1
 	for f in $1/*; do
 		fastq_l="" # nombre del archivo .fastq con los reads left
@@ -51,6 +56,9 @@ if [[ $# == 3 ]]; then
 
 		# Recorro todos los archivos dentro del subdirectorio
 		for fastq_file in $f/*; do
+
+			# Medinate el comando "test" (su versión abreviada: "[[ ]]") utilizo el operador "=~"
+			# que se utiliza para usar expresiones regex.
 
 			# Si el archivo contiene "_R1_" en el nombre, es el archivo .fastq left
 			if [[ "$fastq_file" =~ "_R1_" ]]; then
@@ -72,12 +80,22 @@ if [[ $# == 3 ]]; then
 			output_sample_dir=${fastq_l##*/}
 			# Elimino todas las extensiones del nombre del archivo
 			output_sample_dir=${output_sample_dir%%.*}
+			# Eliminar la parte _R1_001
+			output_sample_dir=${output_sample_dir%_R1_001}
 
 			# Muestro por consola que se va a ejecutar SALMON
 			echo "Procesando los archivos .fastq de $f"
 
 			# Ejecuto SALMON:
-			salmon quant -i $2 -l A -1 $fastq_l -2 $fastq_r -p 8 --validateMappings -o "$3/$output_sample_dir"
+			# Flag --gcBias recomendada por Luis Miguel
+			salmon quant -i $2 -l A -1 $fastq_l -2 $fastq_r -p 10 --validateMappings --gcBias -o "$3/$output_sample_dir"
+
+			# Para trabajar posteriormente con los datos generados, guardo la información en un archivo .csv
+			echo "$output_sample_dir,$3/$output_sample_dir,$(date +'%Y%m%d_%H%M%S')" >> "$3/salmon_quant_files.csv"
+
+			# Para que la carpeta con los resultados pese menos, comprimo el archivo generado .sf
+			gzip "$3/$output_sample_dir/quant.sf"
+
 		fi
 
 	done
