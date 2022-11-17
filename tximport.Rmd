@@ -1,0 +1,84 @@
+---
+title: "tximport"
+author: "Sergio Martí"
+date: "12/11/2022"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Uso de tximport
+
+*tximport* es paquete de bioconductor que se utiliza para importar y hacer un *summary* de las estimaciones de abundancia de transcritos, para posteriormente, realizar un análisis a nivel de transripción o a nivel de gene con otros paquetes de bionconductor, como: edgeR, DESeq2 o  limma-voom.
+
+Exite otro paquete más reciente llamado *tximeta* que ofrece las misma funcionalidad de *tximport*. Pero, también añade automáticamente los métadatos de anotación para transcriptomas.
+
+
+```{r instalar tximport}
+
+if (!require("BiocManager", quietly = TRUE))
+  install.packages("BiocManager")
+
+BiocManager::install("tximport")
+
+```
+
+```{r}
+# TODO ahora con el nuevo script de SALMON, esto ha cambiado
+lFiles <- list.dirs("C:/Sergio/Curso 2022-23/Proyecto FISABIO/Luis Miguel/quants2", full.names = TRUE, recursive = FALSE)
+
+lSampleNames <- basename(lFiles)
+
+lFiles <- file.path(lFiles, "quant.sf.gz")
+
+lFiles
+
+names(lFiles) <- lSampleNames 
+
+head(lFiles)
+```
+
+```{r}
+# BiocManager::install("ensembldb")
+# BiocManager::install("EnsDb.Hsapiens.v86")
+
+library(EnsDb.Hsapiens.v86)
+
+txdb <- EnsDb.Hsapiens.v86
+
+txdb
+
+k <- keys(txdb, keytype = "TXNAME")
+tx2gene <- select(txdb, k, "GENEID", "TXNAME")
+```
+
+
+Importar los archivos
+
+```{r}
+library(tximport)
+
+txi <- tximport(lFiles, type = "salmon", tx2gene = tx2gene, ignoreTxVersion = TRUE)
+
+names(txi)
+
+```
+
+Guardamos los dataframes que se han generado
+
+```{r}
+install.packages("openxlsx")
+
+library("openxlsx")
+
+openxlsx::write.xlsx(txi$abundance, "abundance.xlsx")
+
+write.table(txi$abundance, file = "abundance.csv", sep=",")
+
+openxlsx::write.xlsx(txi$counts, "counts.xlsx")
+
+openxlsx::write.xlsx(txi$length, "length.xlsx")
+```
+

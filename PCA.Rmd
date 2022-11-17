@@ -1,0 +1,163 @@
+---
+title: "PCA"
+author: "Sergio Martí"
+date: "17/11/2022"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## PCA con DESeq2
+
+Cargar los datos
+
+```{r}
+# Datos de expresion genética
+countData <- txi$counts
+
+# Datos clínicos
+library("readxl")
+metaData <- read_excel("C:/Sergio/Curso 2022-23/Proyecto FISABIO/Luis Miguel/dfClinical.xlsx")
+
+rm(tx2gene, txdb, lFiles, k)
+```
+
+Fusionar los datos de los transcritos y los datos clínicos de los pacientes
+
+```{r}
+if (!require("BiocManager", quietly = TRUE))
+  install.packages("BiocManager")
+
+BiocManager::install("DESeq2")
+
+library("DESeq2")
+
+dds <- DESeqDataSetFromMatrix(countData = round(countData), colData = metaData, design = ~Grade)
+
+dds
+```
+
+Ahora vamos a aplicar un Analisis de Componentes Principales (PCA) con las funciones del paquete DESeq2.
+
+```{r}
+vsdata <- vst(dds, blind = FALSE)
+
+pcaData <- plotPCA(vsdata, intgroup="Grade", returnData = TRUE)
+
+pcaData$group <- NULL
+```
+
+El objeto "pcaData" contiene los valores de las Componentes Principales (PCs) para los 28 pacientes.
+
+```{r}
+# Como ocupa mucha memoria, borro el objeto de los transcritos importados para liberar espacio
+rm(txi)
+```
+
+Podemos trabajar con las componentes principales para comprobar si en el gráfico de dispersión, hay algun fáctor clínico que refleje un patrón.
+
+```{r}
+pcaData
+metaData <- metaData[order(metaData$Samples),]; metaData
+
+# Factor edad
+pcaData$fAge <- metaData$fAge
+# Factor género
+pcaData$fGender <- metaData$fGender
+# Factor hemisferio donde aparecio el tumor
+pcaData$fTumorHemisphere <- metaData$fTumorHemisphere
+# Factor lóbulo donde aparecio el tumor
+pcaData$fTumorLobule <- metaData$fTumorLobule
+# Factor supervivencia
+pcaData$fSurvival <- metaData$fSurvival
+
+library(ggplot2)
+
+percentVar <- round(100 * attr(pcaData, "percentVar"))
+
+g1 <- ggplot(pcaData, aes(PC1, PC2, color=fAge)) +
+  geom_point(size=3) +
+  xlab(paste0("PC1: ",percentVar[1],"% variance")) +
+  ylab(paste0("PC2: ",percentVar[2],"% variance")) + 
+  coord_fixed()
+
+g2 <- ggplot(pcaData, aes(PC1, PC2, color=fTumorHemisphere)) +
+  geom_point(size=3) +
+  xlab(paste0("PC1: ",percentVar[1],"% variance")) +
+  ylab(paste0("PC2: ",percentVar[2],"% variance")) + 
+  coord_fixed()
+
+g3 <- ggplot(pcaData, aes(PC1, PC2, color=fTumorLobule)) +
+  geom_point(size=3) +
+  xlab(paste0("PC1: ",percentVar[1],"% variance")) +
+  ylab(paste0("PC2: ",percentVar[2],"% variance")) + 
+  coord_fixed()
+
+g4 <- ggplot(pcaData, aes(PC1, PC2, color=fTumorLobule, shape = fTumorHemisphere)) +
+  geom_point(size=3) +
+  xlab(paste0("PC1: ",percentVar[1],"% variance")) +
+  ylab(paste0("PC2: ",percentVar[2],"% variance")) + 
+  coord_fixed()
+
+g5 <- ggplot(pcaData, aes(PC1, PC2, color=as.factor(fSurvival))) +
+  geom_point(size=3) +
+  xlab(paste0("PC1: ",percentVar[1],"% variance")) +
+  ylab(paste0("PC2: ",percentVar[2],"% variance")) + 
+  coord_fixed()
+
+g6 <- ggplot(pcaData, aes(PC1, PC2, color=Grade)) +
+  geom_point(size=3) +
+  xlab(paste0("PC1: ",percentVar[1],"% variance")) +
+  ylab(paste0("PC2: ",percentVar[2],"% variance")) + 
+  coord_fixed()
+
+library(gridExtra)
+
+grid.arrange(g1, g2, g3, g4, g5, g6)
+
+g1;g2;g3;g4;g5;g6
+```
+
+```{r}
+mDist <- as.matrix(dist(pcaData[,c(1,2)], method = "euclidean"))
+
+# --- Representación gráfica --- #
+# @see: https://stackoverflow.com/questions/3081066/what-techniques-exists-in-r-to-visualize-a-distance-matrix
+heatmap(mDist, cexRow = 0.6, cexCol = 0.6)
+
+hc <- hclust(dist(pcaData[,c(1,2)], method = "euclidean"), method = "complete"); hc
+
+hcplot <- ggdendro::ggdendrogram(hc, rotate = TRUE) + 
+  ggtitle("Clustering Survival")
+
+hcplot
+
+cluster <- cutree(hc, 5)
+
+pcaData$Cluster <- as.factor(cluster)
+
+g7 <- ggplot(pcaData, aes(PC1, PC2, color=Cluster)) +
+  geom_point(size=3) +
+  xlab(paste0("PC1: ",percentVar[1],"% variance")) +
+  ylab(paste0("PC2: ",percentVar[2],"% variance")) + 
+  coord_fixed()
+
+g7
+```
+
+Añadimos esta nueva variable al dataframe.
+
+```{r}
+# Usamos la librería openxlsx para leer los datos clínicos de los pacientes del excel
+library(openxlsx)
+
+# Leemos el excel y lo guardamos como un dataframe
+dfClinical <- openxlsx::read.xlsx("C:/Sergio/Curso 2022-23/Proyecto FISABIO/Luis Miguel/DATOS CLÍNICOS asociados a RNA-seq.xlsx", "Hoja1")
+
+dfClinical$Cluster <- cluster
+
+openxlsx::write.xlsx(dfClinical, "C:/Sergio/Curso 2022-23/Proyecto FISABIO/Luis Miguel/dfClinical.xlsx")
+```
+
