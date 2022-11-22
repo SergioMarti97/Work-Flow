@@ -1,0 +1,240 @@
+---
+title: "PCA"
+author: "Sergio Martí"
+date: "17/11/2022"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## PCA con DESeq2
+
+Cargar los datos.
+
+```{r}
+# Datos de expresion genética
+countData <- txi$counts
+
+# Datos clínicos
+library("readxl")
+metaData <- read_excel("C:/Sergio/Curso 2022-23/Proyecto FISABIO/Luis Miguel/dfClinical.xlsx")
+
+rm(tx2gene, txdb, lFiles, k)
+```
+
+Instalar y cargar la librería DESeq2. Esta librería contiene una serie de funcionalidades para realizar análisis estadísticos, "aguas abajo" (down-stream) de datos ómicos analizados con SALMON e importados con tximport.
+
+```{r}
+if (!require("BiocManager", quietly = TRUE))
+  install.packages("BiocManager")
+
+# BiocManager::install("DESeq2")
+
+library("DESeq2")
+```
+
+La librería DESeq2, permite fusionar los datos de los transcritos y los datos clínicos de los pacientes. De forma que por un lado tenemos la matriz con los datos de expresion génica (counts de los transcritos) y por otro lado tenemos los datos clínicos de los pacientes que son tratados como fáctores.
+
+@see: "https://compbiocore.github.io/deseq-workshop-1/assets/deseq_workshop_1.html"
+
+```{r}
+dds <- DESeqDataSetFromMatrix(countData = round(countData), colData = metaData, design = ~Grade)
+
+dds
+
+str(metadata(rowRanges(dds)))
+```
+
+Ahora vamos a aplicar un Analisis de Componentes Principales (PCA) con las funciones del paquete DESeq2.
+
+```{r}
+# Normalizamos los datos
+# vst = Variance Stabilizing Transformation
+vsdata <- vst(dds, blind = FALSE)
+
+# Realizamos la extracción de componentes principales
+pcaData <- plotPCA(vsdata, intgroup="Grade", returnData = TRUE)
+
+# ???
+pcaData$group <- NULL
+```
+
+El objeto "pcaData" contiene los valores de las 2 primeras Componentes Principales (PCs) para los 28 pacientes.
+
+Se ha creado una función, partiendo de la original, que calcula las 4 primeras componentes principales.
+
+```{r, file='myPlotPCA.R'}
+# Mostramos los datos
+pcaData2
+```
+
+Representación gráfica de los pacientes con la primera y tercera componente principal.
+
+```{r}
+ggplot(pcaData2, aes(x=PC1, y=PC3, color=Grade)) +
+  geom_point(size = 3) + 
+#  xlab(paste0("PC1: ", round(percentVar[1] * 100), "% variance")) + 
+#  ylab(paste0("PC3: ", round(percentVar[3] * 100), "% variance")) + 
+  coord_fixed()
+#  geom_text_repel(size=3)
+
+```
+
+Para gráficar los individuos en tres dimensiones, hay dos opciones:
+La primera es utilizar una extensión de ggplot2. El paquete ggplot2 es un paquete que permite generar gráficos estáticos (es decir, el usuario no puede interactuar con ellos), de alta calidad y que posteriormente se pueden usar para publicaciones científicas.
+
+```{r}
+# @see https://stackoverflow.com/questions/45052188/how-to-plot-3d-scatter-diagram-using-ggplot
+devtools::install_github("AckerDWM/gg3D")
+
+# Librerías necesarias
+library(ggplot2)
+library("gg3D")
+library(ggrepel)
+
+# Gráfico con 3 ejes (3 componentes principales)
+ggplot(pcaData2, aes(x=PC1, y=PC2, z=PC3, color=Grade)) + 
+  theme_void() + 
+  axes_3D() + 
+  stat_3D()
+```
+
+La segunda, es utilizar otro paquete para realizar gráficas: plotly. Plotyl es un paquete que permite generar gráficos dinámicos, que permiten al usuario interactuar con ellos. Para la visualización de estos datos, es una mejor opción que ggplot2.
+
+```{r}
+# Representación de los individuos con las 3 primeras componentes principales.
+# Cargamos la librería plotly
+library(plotly)
+
+install.packages("rlang")
+
+library(ggplot2)
+
+# Generamos la figura
+fig <- plot_ly(
+  pcaData2,
+  x = ~PC1,
+  y = ~PC2,
+  z = ~PC3
+) %>% add_markers(color = ~Grade); fig
+
+# Generamos la figura, con la opción de que cada punto tenga indicado el nombre de la muestra.
+fig_named <- fig %>% add_trace(text = row.names(pcaData2), hoverinfo = 'text', marker = list(color='green')); fig_named
+```
+
+
+
+```{r}
+# Como ocupa mucha memoria, borro el objeto de los transcritos importados para liberar espacio
+rm(txi)
+```
+
+Podemos trabajar con las componentes principales para comprobar si en el gráfico de dispersión, hay algun fáctor clínico que refleje un patrón.
+
+```{r}
+pcaData
+metaData <- metaData[order(metaData$Samples),]; metaData
+
+# Factor edad
+pcaData$fAge <- metaData$fAge
+# Factor género
+pcaData$fGender <- metaData$fGender
+# Factor hemisferio donde aparecio el tumor
+pcaData$fTumorHemisphere <- metaData$fTumorHemisphere
+# Factor lóbulo donde aparecio el tumor
+pcaData$fTumorLobule <- metaData$fTumorLobule
+# Factor supervivencia
+pcaData$fSurvival <- metaData$fSurvival
+
+library(ggplot2)
+
+percentVar <- round(100 * attr(pcaData, "percentVar"))
+
+g1 <- ggplot(pcaData, aes(PC1, PC2, color=fAge)) +
+  geom_point(size=3) +
+  xlab(paste0("PC1: ",percentVar[1],"% variance")) +
+  ylab(paste0("PC2: ",percentVar[2],"% variance")) + 
+  coord_fixed()
+
+g2 <- ggplot(pcaData, aes(PC1, PC2, color=fTumorHemisphere)) +
+  geom_point(size=3) +
+  xlab(paste0("PC1: ",percentVar[1],"% variance")) +
+  ylab(paste0("PC2: ",percentVar[2],"% variance")) + 
+  coord_fixed()
+
+g3 <- ggplot(pcaData, aes(PC1, PC2, color=fTumorLobule)) +
+  geom_point(size=3) +
+  xlab(paste0("PC1: ",percentVar[1],"% variance")) +
+  ylab(paste0("PC2: ",percentVar[2],"% variance")) + 
+  coord_fixed()
+
+g4 <- ggplot(pcaData, aes(PC1, PC2, color=fTumorLobule, shape = fTumorHemisphere)) +
+  geom_point(size=3) +
+  xlab(paste0("PC1: ",percentVar[1],"% variance")) +
+  ylab(paste0("PC2: ",percentVar[2],"% variance")) + 
+  coord_fixed()
+
+g5 <- ggplot(pcaData, aes(PC1, PC2, color=as.factor(fSurvival))) +
+  geom_point(size=3) +
+  xlab(paste0("PC1: ",percentVar[1],"% variance")) +
+  ylab(paste0("PC2: ",percentVar[2],"% variance")) + 
+  coord_fixed()
+
+g6 <- ggplot(pcaData, aes(PC1, PC2, color=Grade)) +
+  geom_point(size=3) +
+  xlab(paste0("PC1: ",percentVar[1],"% variance")) +
+  ylab(paste0("PC2: ",percentVar[2],"% variance")) + 
+  coord_fixed()
+
+library(gridExtra)
+
+grid.arrange(g1, g2, g3, g4, g5, g6)
+
+g1;g2;g3;g4;g5;g6
+```
+
+```{r}
+# Matriz de distancias
+mDist <- as.matrix(dist(pcaData[,c(1,2)], method = "euclidean"))
+
+# --- Representación gráfica --- #
+# @see: https://stackoverflow.com/questions/3081066/what-techniques-exists-in-r-to-visualize-a-distance-matrix
+heatmap(mDist, cexRow = 0.6, cexCol = 0.6)
+
+# Clusttering herarquico
+hc <- hclust(dist(pcaData[,c(1,2)], method = "euclidean"), method = "complete"); hc
+
+hcplot <- ggdendro::ggdendrogram(hc, rotate = TRUE) + 
+  ggtitle("Clustering Survival")
+
+hcplot
+
+cluster <- cutree(hc, 5)
+
+pcaData$Cluster <- as.factor(cluster)
+
+g7 <- ggplot(pcaData, aes(PC1, PC2, color=Cluster)) +
+  geom_point(size=3) +
+  xlab(paste0("PC1: ",percentVar[1],"% variance")) +
+  ylab(paste0("PC2: ",percentVar[2],"% variance")) + 
+  coord_fixed()
+
+g7
+```
+
+Añadimos esta nueva variable al dataframe.
+
+```{r}
+# Usamos la librería openxlsx para leer los datos clínicos de los pacientes del excel
+library(openxlsx)
+
+# Leemos el excel y lo guardamos como un dataframe
+dfClinical <- openxlsx::read.xlsx("C:/Sergio/Curso 2022-23/Proyecto FISABIO/Luis Miguel/DATOS CLÍNICOS asociados a RNA-seq.xlsx", "Hoja1")
+
+dfClinical$Cluster <- cluster
+
+openxlsx::write.xlsx(dfClinical, "C:/Sergio/Curso 2022-23/Proyecto FISABIO/Luis Miguel/dfClinical.xlsx")
+```
+
